@@ -3,26 +3,6 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: manager-role
-rules:
-- apiGroups:
-  - hyperspike.io
-  resources:
-  - auths
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - hyperspike.io
-  resources:
-  - auths/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - hyperspike.io
-  resources:
-  - auths/status
-  verbs:
-  - get
-  - patch
-  - update
+# spoon watches no Kubernetes resources; authentication sources are managed
+# by the gitea-operator Auth controller.
+rules: []
