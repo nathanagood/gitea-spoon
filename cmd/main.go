@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -37,8 +38,6 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	hyperv1 "hyperspike.io/gitea-operator/api/v1"
-	"hyperspike.io/gitea-spoon/internal/controller"
 	"hyperspike.io/gitea-spoon/internal/local"
 	// +kubebuilder:scaffold:imports
 )
@@ -51,7 +50,6 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(hyperv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -141,9 +139,12 @@ func main() {
 		// if you are doing or is intended to do any operation such as perform cleanups
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
+		// Authentication sources are managed by the gitea-operator Auth
+		// controller, so spoon watches no custom resources. Scope any cache
+		// to the pod's own namespace, where the operator grants it RBAC.
 		Cache: cache.Options{
 			DefaultNamespaces: map[string]cache.Config{
-				"default": {},
+				podNamespace(): {},
 			},
 		},
 	})
@@ -152,13 +153,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.AuthReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "Auth")
-		os.Exit(1)
-	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -184,4 +178,20 @@ func main() {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+const serviceAccountNamespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+
+// podNamespace returns the namespace spoon runs in: POD_NAMESPACE when set,
+// otherwise the mounted service account namespace, otherwise "default".
+func podNamespace() string {
+	if ns := strings.TrimSpace(os.Getenv("POD_NAMESPACE")); ns != "" {
+		return ns
+	}
+	if data, err := os.ReadFile(serviceAccountNamespaceFile); err == nil {
+		if ns := strings.TrimSpace(string(data)); ns != "" {
+			return ns
+		}
+	}
+	return "default"
 }
